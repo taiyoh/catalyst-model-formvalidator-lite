@@ -1,0 +1,27 @@
+This is Perl module Catalyst::Model::FormValidator::Lite.
+
+INSTALLATION
+
+Catalyst::Model::FormValidator::Lite installation is straightforward. If your CPAN shell is set up,
+you should just be able to do
+
+    % cpan Catalyst::Model::FormValidator::Lite
+
+Download it, unpack it, then build it as per the usual:
+
+    % perl Makefile.PL
+    % make && make test
+
+Then install it:
+
+    % make install
+
+DOCUMENTATION
+
+Catalyst::Model::FormValidator::Lite documentation is available as in POD. So you can do:
+
+    % perldoc Catalyst::Model::FormValidator::Lite
+
+to read the documentation online with your favorite pager.
+
+taiyoh
