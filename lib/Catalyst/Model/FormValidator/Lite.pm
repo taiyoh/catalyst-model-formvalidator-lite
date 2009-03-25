@@ -34,26 +34,24 @@ sub ACCEPT_CONTEXT {
     my $self = shift;
     my ($c) = @_;
 
-$c->log->debug($_[1]);
-	
     return $self->build_per_context_instance(@_) unless ref $c;
     my $key = blessed $self ? refaddr $self : $self;
     return $c->stash->{"__InstancePerContext_${key}"} ||= $self->build_per_context_instance(@_);
 }
 
 sub build_per_context_instance {
-    my $self = shift;
-    my $c = shift;
-    my $form = $self->validator_profile->{$c->req->{action}};
+    my $self  = shift;
+    my $c     = shift;
+    my $form  = $self->validator_profile->{ $c->req->{action} };
     my $klass = 'Catalyst::Model::FormValidator::Lite::PerRequest';
-    return $klass->new($c->req, $form);
+    return $klass->new( $c->req, $form, @_ );
 }
 
 package Catalyst::Model::FormValidator::Lite::PerRequest;
 
 sub new {
     my $pkg = shift;
-    my ( $req, $form ) = @_;
+    my ( $req, $form, @args ) = @_;
     my $validator = FormValidator::Lite->new($req);
     my $self = bless {
         _validator => $validator,
