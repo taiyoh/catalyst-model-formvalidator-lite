@@ -9,7 +9,7 @@ __PACKAGE__->mk_classdata('validator_profile');
 our $VERSION = '0.001_1';
 
 use FormValidator::Lite;
-use YAML ();
+use YAML;
 
 sub new {
     my $self = shift;
@@ -18,9 +18,9 @@ sub new {
     my $conf = $c->config->{validator};
     $self->validator_profile(
         do {
-            no warnings 'once';
             $conf->{profile} ||= '';
             if ( -f $conf->{profile} ) {
+                no warnings 'once';
                 $c->log->debug("Loaded FV::Lite Profile \"$conf->{profile}\"");
                 local $YAML::UseAliases = 0;
                 my $data = YAML::Dump( YAML::LoadFile( $conf->{profile} ) );
@@ -51,30 +51,37 @@ sub build_per_context_instance {
     my $self  = shift;
     my $c     = shift;
     my $form = {};
-    $form  = $self->validator_profile->{ $c->req->{action} }
-        if exists $self->validator_profile->{ $c->req->{action} };
+    my $action = $c->req->{action};
+    $form = $self->validator_profile->{ $action }
+        if exists $self->validator_profile->{ $action };
     my $klass = 'Catalyst::Model::FormValidator::Lite::PerRequest';
-    return $klass->new( $c->req, $form, @_ );
+    my $rule = $_[1] ? +{ @_ } : $_[0];
+    $rule ||= {};
+    $rule = +{ @$rule } if ref $rule eq 'ARRAY';
+    return $klass->new( $c->req, $form, $rule );
 }
 
 package Catalyst::Model::FormValidator::Lite::PerRequest;
 
 sub new {
     my $pkg = shift;
-    my ( $req, $form, @args ) = @_;
+    my ( $req, $form, $rule ) = @_;
+    $rule ||= {};
     my $validator = FormValidator::Lite->new($req);
     my $self = bless {
         _validator => $validator,
-        _rule      => {},
+        _rule      => $rule,
         _message   => {},
     }, $pkg;
-    $self->_load_action($form, @args);
+    $self->_load_action($form);
     $self;
 }
 
 sub _load_action {
-    my ( $self, $form, @args ) = @_;
+    my ( $self, $form ) = @_;
     for my $n ( keys %$form ) {
+        my $nrule = $self->{_rule}->{$n};
+        delete $self->{_rule}->{$n} if $nrule;
         for my $r ( @{ $form->{$n} } ) {
             my $rule;
             if ( $rule = $r->{rule} ) {
@@ -93,34 +100,9 @@ sub _load_action {
             $self->{_message}->{"${n}.${rule}"} = $r->{message}
               if $rule;
         }
+        push @{ $self->{_rule}->{$n} }, @$nrule if $nrule;
     }
     $self;
-}
-
-sub add_rule {
-    my $self = shift;
-    my $new_rule = {};
-    if ( $_[1] ) {
-        $new_rule = +{@_};
-    }
-    elsif ( $_[0] ) {
-        $new_rule = $_[0];
-        $new_rule = +{@$new_rule} if ref $new_rule eq 'ARRAY';
-    }
-    $self->{_rule} = { %{ $self->{_rule} }, %$new_rule };
-}
-
-sub add_rule {
-    my $self = shift;
-    my $new_rule = {};
-    if ( $_[1] ) {
-        $new_rule = +{@_};
-    }
-    elsif ( $_[0] ) {
-        $new_rule = $_[0];
-        $new_rule = +{@$new_rule} if ref $new_rule eq 'ARRAY';
-    }
-    $self->{_rule} = { %{ $self->{_rule} }, %$new_rule };
 }
 
 sub has_error {
