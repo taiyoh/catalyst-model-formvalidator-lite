@@ -74,6 +74,8 @@ sub new {
         _message   => {},
     }, $pkg;
     $self->_load_action($form);
+    $self->{_validator}->set_message( $self->{_message} );
+    $self->{_validator}->check( %{ $self->{_rule} } );
     $self;
 }
 
@@ -103,13 +105,6 @@ sub _load_action {
         push @{ $self->{_rule}->{$n} }, @$nrule if $nrule;
     }
     $self;
-}
-
-sub has_error {
-    my $self = shift;
-    $self->{_validator}->set_message( $self->{_message} );
-    $self->{_validator}->check( %{ $self->{_rule} } );
-    $self->{_validator}->has_error;
 }
 
 sub set_invalid_form {
