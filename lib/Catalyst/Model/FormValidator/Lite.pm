@@ -19,7 +19,7 @@ sub new {
         do {
             require YAML::Syck;
             local $YAML::Syck::ImplicitUnicode = 1;
-            eval { YAML::Syck::LoadFile( $conf->{profile} ) };
+            eval { YAML::Syck::LoadFile( $conf->{profile} ) } || {};
           }
     );
     $c->log->debug("Loaded FV::Lite Profile \"$conf->{profile}\"")
@@ -99,6 +99,7 @@ sub add_rule {
     }
     $self->{_rule} = { %{ $self->{_rule} }, %$new_rule };
 }
+
 sub has_error {
     my $self = shift;
     $self->{_validator}->set_message( $self->{_message} );
@@ -106,7 +107,10 @@ sub has_error {
     $self->{_validator}->has_error;
 }
 
-*set_invalid_form = \&FormValidator::Lite::set_error;
+sub set_invalid_form {
+    my $self = shift;
+    $self->{_validator}->set_error(@_);
+}
 
 sub AUTOLOAD {
     my $self = shift;
