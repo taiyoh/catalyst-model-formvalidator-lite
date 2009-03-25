@@ -9,6 +9,7 @@ __PACKAGE__->mk_classdata('validator_profile');
 our $VERSION = '0.001_1';
 
 use FormValidator::Lite;
+use YAML ();
 
 sub new {
     my $self = shift;
@@ -17,13 +18,20 @@ sub new {
     my $conf = $c->config->{validator};
     $self->validator_profile(
         do {
-            require YAML::Syck;
-            local $YAML::Syck::ImplicitUnicode = 1;
-            eval { YAML::Syck::LoadFile( $conf->{profile} ) } || {};
-          }
+            no warnings 'once';
+            $conf->{profile} ||= '';
+            if ( -f $conf->{profile} ) {
+                $c->log->debug("Loaded FV::Lite Profile \"$conf->{profile}\"");
+                local $YAML::UseAliases = 0;
+                my $data = YAML::Dump( YAML::LoadFile( $conf->{profile} ) );
+                utf8::decode($data);
+                YAML::Load($data);    # XXX: remove yaml aliases
+            }
+            else {
+                {};
+            }
+        }
     );
-    $c->log->debug("Loaded FV::Lite Profile \"$conf->{profile}\"")
-      if $self->validator_profile;
     my $constraints = $conf->{constraints};
     $constraints = [$constraints] unless ref $constraints;
     FormValidator::Lite->load_constraints(@$constraints);
@@ -42,7 +50,9 @@ sub ACCEPT_CONTEXT {
 sub build_per_context_instance {
     my $self  = shift;
     my $c     = shift;
-    my $form  = $self->validator_profile->{ $c->req->{action} };
+    my $form = {};
+    $form  = $self->validator_profile->{ $c->req->{action} }
+        if exists $self->validator_profile->{ $c->req->{action} };
     my $klass = 'Catalyst::Model::FormValidator::Lite::PerRequest';
     return $klass->new( $c->req, $form, @_ );
 }
@@ -58,12 +68,12 @@ sub new {
         _rule      => {},
         _message   => {},
     }, $pkg;
-    $self->_load_action($form);
+    $self->_load_action($form, @args);
     $self;
 }
 
 sub _load_action {
-    my ( $self, $form ) = @_;
+    my ( $self, $form, @args ) = @_;
     for my $n ( keys %$form ) {
         for my $r ( @{ $form->{$n} } ) {
             my $rule;
@@ -85,6 +95,19 @@ sub _load_action {
         }
     }
     $self;
+}
+
+sub add_rule {
+    my $self = shift;
+    my $new_rule = {};
+    if ( $_[1] ) {
+        $new_rule = +{@_};
+    }
+    elsif ( $_[0] ) {
+        $new_rule = $_[0];
+        $new_rule = +{@$new_rule} if ref $new_rule eq 'ARRAY';
+    }
+    $self->{_rule} = { %{ $self->{_rule} }, %$new_rule };
 }
 
 sub add_rule {
