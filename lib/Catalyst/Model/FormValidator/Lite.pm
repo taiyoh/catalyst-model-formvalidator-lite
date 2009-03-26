@@ -6,7 +6,7 @@ use Scalar::Util qw/blessed refaddr/;
 use base qw/Catalyst::Model/;
 __PACKAGE__->mk_classdata('validator_profile');
 
-our $VERSION = '0.001_1';
+our $VERSION = '0.001_2';
 
 use FormValidator::Lite;
 use YAML;
@@ -62,54 +62,64 @@ sub build_per_context_instance {
 }
 
 package Catalyst::Model::FormValidator::Lite::PerRequest;
+use base qw/Class::Data::Inheritable/;
+use Clone qw/clone/;
+__PACKAGE__->mk_classdata('action_cache');
+__PACKAGE__->action_cache({});
 
 sub new {
     my $pkg = shift;
     my ( $req, $form, $rule ) = @_;
-    $rule ||= {};
     my $validator = FormValidator::Lite->new($req);
     my $self = bless {
         _validator => $validator,
-        _rule      => $rule,
+        _rule      => {},
         _message   => {},
     }, $pkg;
-    $self->_load_action($form);
+    $self->_form_action($form, $req->{action});
+    $self->_merge_rule($rule || {});
     $self->{_validator}->set_message( $self->{_message} );
     $self->{_validator}->check( %{ $self->{_rule} } );
     $self;
 }
 
-sub _load_action {
-    my ( $self, $form ) = @_;
+sub _form_action {
+    my ( $self, $form, $action ) = @_;
+    if (my $cache = clone($self->action_cache->{$action})) {
+        $self->{_rule} = $cache->{rule};
+        $self->{_message} = $cache->{message};
+        return;
+    }
+    my $cache;
     for my $n ( keys %$form ) {
-        my $nrule = $self->{_rule}->{$n};
-        delete $self->{_rule}->{$n} if $nrule;
         for my $r ( @{ $form->{$n} } ) {
             my $rule;
             if ( $rule = $r->{rule} ) {
                 if ( ref $rule eq 'ARRAY' ) {
-                    push @{ $self->{_rule}->{$n} }, [@$rule];
+                    push @{ $cache->{rule}->{$n} }, $rule;
                     $rule = $rule->[0];
                 }
                 else {
-                    push @{ $self->{_rule}->{$n} }, $rule;
+                    push @{ $cache->{rule}->{$n} }, $rule;
                 }
             }
             else {
                 $rule = $r->{self_rule};
             }
             $rule = lc($rule);
-            $self->{_message}->{"${n}.${rule}"} = $r->{message}
-              if $rule;
+            $cache->{message}->{"${n}.${rule}"} = $r->{message} if $rule;
         }
-        push @{ $self->{_rule}->{$n} }, @$nrule if $nrule;
     }
-    $self;
+    $self->action_cache->{$action} = clone($cache);
+    $self->{_rule}    = $cache->{rule};
+    $self->{_message} = $cache->{message};
 }
 
-sub set_invalid_form {
-    my $self = shift;
-    $self->{_validator}->set_error(@_);
+sub _merge_rule {
+    my ( $self, $rule ) = @_;
+    for my $n ( keys %$rule ) {
+        push @{ $self->{_rule}->{$n} }, values(%$rule);
+    }
 }
 
 sub AUTOLOAD {
