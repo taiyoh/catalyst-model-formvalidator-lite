@@ -88,10 +88,7 @@ sub _form_action {
 
 
 package Catalyst::Model::FormValidator::Lite::PerRequest;
-use base qw/Class::Data::Inheritable/;
 use Clone qw/clone/;
-__PACKAGE__->mk_classdata('action_cache');
-__PACKAGE__->action_cache({});
 
 sub new {
     my $pkg = shift;
