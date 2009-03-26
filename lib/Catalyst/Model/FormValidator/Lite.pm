@@ -5,6 +5,7 @@ use warnings;
 use Scalar::Util qw/blessed refaddr/;
 use base qw/Catalyst::Model/;
 __PACKAGE__->mk_classdata('validator_profile');
+__PACKAGE__->validator_profile({});
 
 our $VERSION = '0.001_2';
 
@@ -16,22 +17,21 @@ sub new {
     $self = $self->next::method(@_);
     my ($c) = @_;
     my $conf = $c->config->{validator};
-    $self->validator_profile(
-        do {
-            $conf->{profile} ||= '';
-            if ( -f $conf->{profile} ) {
-                no warnings 'once';
-                $c->log->debug("Loaded FV::Lite Profile \"$conf->{profile}\"");
-                local $YAML::UseAliases = 0;
-                my $data = YAML::Dump( YAML::LoadFile( $conf->{profile} ) );
-                utf8::decode($data);
-                YAML::Load($data);    # XXX: remove yaml aliases
-            }
-            else {
-                {};
-            }
+    my $data = do {
+        $conf->{profile} ||= '';
+        if ( -f $conf->{profile} ) {
+            no warnings 'once';
+            $c->log->debug("Loaded FV::Lite Profile \"$conf->{profile}\"");
+            local $YAML::UseAliases = 0;
+            my $yml = YAML::Dump( YAML::LoadFile( $conf->{profile} ) );
+            utf8::decode($yml);
+            YAML::Load($yml);    # XXX: remove yaml aliases
         }
-    );
+        else {
+            {};
+        }
+    };
+    $self->_form_action($data->{$_}, $_) for keys %$data;
     my $constraints = $conf->{constraints};
     $constraints = [$constraints] unless ref $constraints;
     FormValidator::Lite->load_constraints(@$constraints);
@@ -61,38 +61,11 @@ sub build_per_context_instance {
     return $klass->new( $c->req, $form, $rule );
 }
 
-package Catalyst::Model::FormValidator::Lite::PerRequest;
-use base qw/Class::Data::Inheritable/;
-use Clone qw/clone/;
-__PACKAGE__->mk_classdata('action_cache');
-__PACKAGE__->action_cache({});
-
-sub new {
-    my $pkg = shift;
-    my ( $req, $form, $rule ) = @_;
-    my $validator = FormValidator::Lite->new($req);
-    my $self = bless {
-        _validator => $validator,
-        _rule      => {},
-        _message   => {},
-    }, $pkg;
-    $self->_form_action($form, $req->{action});
-    $self->_merge_rule($rule || {});
-    $self->{_validator}->set_message( $self->{_message} );
-    $self->{_validator}->check( %{ $self->{_rule} } );
-    $self;
-}
-
 sub _form_action {
-    my ( $self, $form, $action ) = @_;
-    if (my $cache = clone($self->action_cache->{$action})) {
-        $self->{_rule} = $cache->{rule};
-        $self->{_message} = $cache->{message};
-        return;
-    }
+    my ( $self, $prof, $action ) = @_;
     my $cache;
-    for my $n ( keys %$form ) {
-        for my $r ( @{ $form->{$n} } ) {
+    for my $n ( keys %$prof ) {
+        for my $r ( @{ $prof->{$n} } ) {
             my $rule;
             if ( $rule = $r->{rule} ) {
                 if ( ref $rule eq 'ARRAY' ) {
@@ -110,15 +83,37 @@ sub _form_action {
             $cache->{message}->{"${n}.${rule}"} = $r->{message} if $rule;
         }
     }
-    $self->action_cache->{$action} = clone($cache);
-    $self->{_rule}    = $cache->{rule};
-    $self->{_message} = $cache->{message};
+    $self->validator_profile->{$action} = $cache;
+}
+
+
+package Catalyst::Model::FormValidator::Lite::PerRequest;
+use base qw/Class::Data::Inheritable/;
+use Clone qw/clone/;
+__PACKAGE__->mk_classdata('action_cache');
+__PACKAGE__->action_cache({});
+
+sub new {
+    my $pkg = shift;
+    my ( $req, $form, $rule ) = @_;
+    my $validator = FormValidator::Lite->new($req);
+    my $self = bless {
+        _validator => $validator,
+        _rule      => {},
+        _message   => {},
+    }, $pkg;
+    $self->_merge_rule(clone($form), ($rule || {}));
+    $self->{_validator}->set_message( $self->{_message} );
+    $self->{_validator}->check( %{ $self->{_rule} } );
+    $self;
 }
 
 sub _merge_rule {
-    my ( $self, $rule ) = @_;
-    for my $n ( keys %$rule ) {
-        push @{ $self->{_rule}->{$n} }, values(%$rule);
+    my ( $self, $cache, $rule ) = @_;
+    $self->{_rule}    = $cache->{rule};
+    $self->{_message} = $cache->{message};
+    while (my ($n, $r) = each %$rule ) {
+        push @{ $self->{_rule}->{$n} }, $r;
     }
 }
 
