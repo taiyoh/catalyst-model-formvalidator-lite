@@ -21,7 +21,7 @@ sub new {
         $conf->{profile} ||= '';
         if ( -f $conf->{profile} ) {
             no warnings 'once';
-            $c->log->debug("Loaded FV::Lite Profile \"$conf->{profile}\"");
+            $c->log->debug("Loaded FV::Lite Profile \"$conf->{profile}\"") if $c->debug;
             local $YAML::UseAliases = 0;
             my $yml = YAML::Dump( YAML::LoadFile( $conf->{profile} ) );
             utf8::decode($yml);
@@ -51,7 +51,7 @@ sub build_per_context_instance {
     my $self  = shift;
     my $c     = shift;
     my $form = {};
-    my $action = $c->req->{action};
+    my $action = $c->action->reverse;
     $form = $self->validator_profile->{ $action }
         if exists $self->validator_profile->{ $action };
     my $klass = 'Catalyst::Model::FormValidator::Lite::PerRequest';
@@ -90,6 +90,7 @@ sub _form_action {
 package Catalyst::Model::FormValidator::Lite::PerRequest;
 use Clone qw/clone/;
 
+use Data::Dumper qw/Dumper/;
 sub new {
     my $pkg = shift;
     my ( $req, $form, $rule ) = @_;
@@ -99,7 +100,7 @@ sub new {
         _rule      => {},
         _message   => {},
     }, $pkg;
-    $self->_merge_rule(clone($form), ($rule || {}));
+    $self->_merge_rule(clone($form), $rule);
     $self->{_validator}->set_message( $self->{_message} );
     $self->{_validator}->check( %{ $self->{_rule} } );
     $self;
@@ -107,10 +108,13 @@ sub new {
 
 sub _merge_rule {
     my ( $self, $cache, $rule ) = @_;
-    $self->{_rule}    = $cache->{rule};
-    $self->{_message} = $cache->{message};
-    while (my ($n, $r) = each %$rule ) {
-        push @{ $self->{_rule}->{$n} }, $r;
+    $self->{_rule}    = $cache->{rule} || {};
+    $self->{_message} = $cache->{message} || {};
+    $rule ||= {};
+    if (ref $rule && ref $rule eq 'HASH') {
+        while ( my ( $n, $r ) = each %$rule ) {
+            push @{ $self->{_rule}->{$n} }, $r;
+        }
     }
 }
 
