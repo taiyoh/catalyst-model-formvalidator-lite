@@ -90,7 +90,6 @@ sub _form_action {
 package Catalyst::Model::FormValidator::Lite::PerRequest;
 use Clone qw/clone/;
 
-use Data::Dumper qw/Dumper/;
 sub new {
     my $pkg = shift;
     my ( $req, $form, $rule ) = @_;
